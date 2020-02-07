@@ -36,7 +36,7 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
 
         detailTemplate: 'fields/array/detail',
 
-        editTemplate: 'fields/array/edit',
+        editTemplate: 'dynamic-checklist:fields/dynamic-checklist/edit',
 
         searchTemplate: 'fields/array/search',
 
@@ -47,13 +47,15 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
         validations: ['required', 'maxCount'],
 
         isInversed: false,
+        
+        existingObj: null,
 
         data: function () {
             var itemHtmlList = [];
             (this.selected || []).forEach(function (jsonItem) {
                 itemHtmlList.push(this.getItemHtml(jsonItem));
             }, this);
-            
+
             return _.extend({
                 selected: this.selected,
                 translatedOptions: this.translatedOptions,
@@ -64,6 +66,17 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
                 maxItemLength: this.maxItemLength,
                 allowCustomOptions: this.allowCustomOptions
             }, Dep.prototype.data.call(this));
+        },
+
+        events: {
+            'click [data-action="removeValue"]': function (e) {
+                var value = $(e.currentTarget).data('value').toString();
+                this.removeValue(value);
+            },
+            'click [data-action="editValue"]': function (e) {
+                var existingValue = $(e.currentTarget).data('value').toString();
+                this.editLabel(existingValue);
+            }
         },
 
         getItemHtml: function(jsonItem) {
@@ -86,14 +99,16 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
                 isChecked = !isChecked;
             }
             var dataValue = this.escapeValue(JSON.stringify(jsonItem));
-            var itemHtml = '<div class="list-group-item" data-value="'+dataValue+'" style="cursor: default;">';
+            var itemHtml = '<div class="list-group-item" data-value="'+dataValue+'" data-label="'+label+'" style="cursor: default;">';
             itemHtml += '<input type="checkbox" data-name="'+dataName+'" id="'+id+'"';
             if(isChecked) {
                 itemHtml += ' checked ';
             }
             itemHtml += '> ';
+            //itemHtml += '<input class = "main-element form-control" type="text" class="checklist-label" value="'+label+'">';
             itemHtml += '<label for="'+id+'" class="checklist-label">'+label+'</label>';
-            itemHtml += '<a href="javascript:" class="pull-right" data-value="'+dataValue+'" data-action="removeValue"><span class="fas fa-times"></span></a>';
+            itemHtml += '<a href="javascript:" class="pull-right" data-value="'+label+'" data-action="removeValue"><span class="fas fa-times"></span></a>';            
+            itemHtml += '<a href="javascript:" class="pull-right" data-value="'+label+'" data-action="editValue" style="margin-right:10px;"><span class="fas fa-pencil-alt fa-sm"></span></a>';            
             itemHtml += '</div>';      
             return itemHtml;            
         },
@@ -103,19 +118,11 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
             // convert the label into a JSON object with the default state value of zero
             var jsonItem = {};
             jsonItem.label = label;
-            jsonItem.state = "0";
-            // see if the jsonItem already exists in the "selected" array of items
-            if (this.selected.indexOf(jsonItem) == -1) {
-                // if it doesn't exist, try with the other state value
-                jsonItem.state = "1";
-                if (this.selected.indexOf(jsonItem) !== -1) {
-                    isNew = false;
-                } else {
-                    // reset the state property to its default value
-                    jsonItem.state = "0";
-                }                
-            } else {
-                isNew = false; 
+            jsonItem.state = "0";    
+            var targetObj = this.selected.find(o => o.label === label);
+            if(targetObj) {
+                alert("Duplicate checklist labels are not allowed");
+                isNew = false;
             }
             // it it doesn't exist append to the "selected" array and to the list html
             if(isNew) {
@@ -127,7 +134,51 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
                 this.selected.push(jsonItem);
                 // trigger the "change" event
                 this.trigger('change');                
-            }
+            } 
+        },
+        
+        editLabel: function (existingLabel) {
+            var valueInternal = existingLabel.replace(/"/g, '\\"');
+            // remove the element from the DOM
+            this.$list.children('[data-label="' + valueInternal + '"]').remove();
+            // get the existing item object
+            this.existingObj = this.selected.find(o => o.label === existingLabel);
+            // display the label on the "updateItem" input container for editing
+            var $inputContainer = $('input.updateItem');
+            $inputContainer.val(existingLabel);
+            // hide the "addItem" input-group div and display instead the "updateItem" input-group div
+            this.$el.find('div.addItem').hide();
+            this.$el.find('div.updateItem').show();   
+            // enable the "updateItem" button
+            this.controlUpdateItemButton();           
+        },
+
+        updateLabel: function (newLabel) {
+            // get the existing element json object position inside the array
+            var index = this.selected.indexOf(this.existingObj);           
+            // update the array of json objects
+            this.selected[index].label = newLabel;
+            this.selected[index].state = this.existingObj.state;
+            // create the updated element rendering html code
+            var html = this.getItemHtml(this.selected[index]);
+            // append the html to the existing list of items
+            this.$list.append(html);
+            // trigger the "change" event 
+            this.trigger('change');                           
+        },
+        
+        removeValue: function (label) {
+            var valueInternal = label.replace(/"/g, '\\"');
+            // remove the element from the DOM
+            this.$list.children('[data-label="' + valueInternal + '"]').remove();
+            // find the element json object in the "selected" array
+            var targetObj = this.selected.find(o => o.label === label);
+            // get the element json object position inside the array
+            var index = this.selected.indexOf(targetObj);
+            // remove the element from the array of json objects
+            this.selected.splice(index, 1);
+            // trigger the 'change' event
+            this.trigger('change');
         },
 
         getValueForDisplay: function () {
@@ -208,36 +259,92 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
             this.selected = selected;
         },
 
+        controlAddItemButton: function () {
+            var $addItemInput = this.$addItemInput;
+            if (!$addItemInput) return;
+            if (!$addItemInput.get(0)) return;
+
+            var value = $addItemInput.val().toString();
+            if (!value && this.params.noEmptyString) {
+                this.$addButton.addClass('disabled').attr('disabled', 'disabled');
+            } else {
+                this.$addButton.removeClass('disabled').removeAttr('disabled');
+            }
+        },
+
+        controlUpdateItemButton: function () {
+            //alert("controlUpdateItemButton function invoked");
+            var $updateItemInput = this.$updateItemInput;
+            if (!$updateItemInput) return;
+            if (!$updateItemInput.get(0)) return;
+
+            var value = $updateItemInput.val().toString();
+            if (!value && this.params.noEmptyString) {
+                this.$updateButton.addClass('disabled').attr('disabled', 'disabled');
+            } else {
+                this.$updateButton.removeClass('disabled').removeAttr('disabled');
+            }
+        },
+
         afterRender: function () {
             if (this.mode == 'edit') {
                 this.$list = this.$el.find('.list-group');
-                var $select = this.$select = this.$el.find('.select');
+                
+                // prepare the add item and update item inputs
+                var $addItemInput = this.$addItemInput = this.$el.find('input.addItem');
+                var $updateItemInput = this.$updateItemInput = this.$el.find('input.updateItem');
 
                 if (this.allowCustomOptions) {
                     this.$addButton = this.$el.find('button[data-action="addItem"]');
+                    this.$updateButton = this.$el.find('button[data-action="updateItem"]');
 
                     this.$addButton.on('click', function () {
-                        var value = this.$select.val().toString();
-                        this.addValue(value);
-                        $select.val('');
+                        var label = this.$addItemInput.val().toString();
+                        this.addValue(label);
+                        $addItemInput.val('');
                         this.controlAddItemButton();
                     }.bind(this));
 
-                    $select.on('input', function () {
+                    this.$updateButton.on('click', function () {
+                        var label = this.$updateItemInput.val().toString();
+                        this.updateLabel(label);
+                        $updateItemInput.val('');
+                        this.controlUpdateItemButton();
+                    }.bind(this));
+
+                    $addItemInput.on('input', function () {
                         this.controlAddItemButton();
                     }.bind(this));
 
-                    $select.on('keypress', function (e) {
+                    $updateItemInput.on('input', function () {
+                        this.controlUpdateItemButton();
+                    }.bind(this));
+
+                    $addItemInput.on('keypress', function (e) {
                         if (e.keyCode == 13) {
-                            var value = $select.val().toString();
+                            var label = $addItemInput.val().toString();
                             if (this.noEmptyString) {
-                                if (value == '') {
+                                if (label == '') {
                                     return;
                                 }
                             }
-                            this.addValue(value);
-                            $select.val('');
+                            this.addValue(label);
+                            $addItemInput.val('');
                             this.controlAddItemButton();
+                        }
+                    }.bind(this));
+
+                    $updateItemInput.on('keypress', function (e) {
+                        if (e.keyCode == 13) {
+                            var label = $updateItemInput.val().toString();
+                            if (this.noEmptyString) {
+                                if (label == '') {
+                                    return;
+                                }
+                            }
+                            this.updateLabel(label);
+                            $updateItemInput.val('');
+                            this.controlUpdateItemButton();
                         }
                     }.bind(this));
 

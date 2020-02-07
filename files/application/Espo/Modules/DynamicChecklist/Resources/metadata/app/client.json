@@ -1,0 +1,10 @@
+{
+    "developerModeScriptList": [
+        "__APPEND__",
+        "client/modules/dynamic-checklist/lib/module-js-functions.js"
+    ],
+    "scriptList": [
+        "__APPEND__",
+        "client/modules/dynamic-checklist/lib/module-js-functions.js"
+    ]
+}
