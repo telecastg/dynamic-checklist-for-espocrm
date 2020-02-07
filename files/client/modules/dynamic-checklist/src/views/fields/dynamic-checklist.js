@@ -50,8 +50,8 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
 
         data: function () {
             var itemHtmlList = [];
-            (this.selected || []).forEach(function (rawItem) {
-                itemHtmlList.push(this.getItemHtml(rawItem));
+            (this.selected || []).forEach(function (jsonItem) {
+                itemHtmlList.push(this.getItemHtml(jsonItem));
             }, this);
             
             return _.extend({
@@ -66,89 +66,85 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
             }, Dep.prototype.data.call(this));
         },
 
-        getItemHtml: function(rawItem) {
+        getItemHtml: function(jsonItem) {
             // breakdown a given checklist item into its components: label and checkbox value 
-            rawItem = rawItem.toString();
-            var valueSanitized = this.escapeValue(rawItem);
-            var item = valueSanitized.split(";;");
-            var label = item[0];
+            var label = this.escapeValue(jsonItem.label);
             if (this.translatedOptions) {
                 if ((label in this.translatedOptions)) {
                     label = this.translatedOptions[label];
                     label = label.toString();
                     label = this.escapeValue(label);
                 }
-            }        
-            var isChecked = false;
-            if( item[1] == "1"){
-                isChecked = true;
-            }
+            }     
             var dataName = 'checklistItem-'+this.name+'-'+label;
-            var id = 'checklist-item-'+this.name+'-'+label;
+            var id = 'checklist-item-'+this.name+'-'+label;           
+            var isChecked = false;                        
+            if( jsonItem.state == "1"){
+                isChecked = true;
+            }            
             if(this.isInversed){
                 isChecked = !isChecked;
             }
-            var itemHtml = '<div class="list-group-item" data-value="'+valueSanitized+'" style="cursor: default;">';
+            var dataValue = this.escapeValue(JSON.stringify(jsonItem));
+            var itemHtml = '<div class="list-group-item" data-value="'+dataValue+'" style="cursor: default;">';
             itemHtml += '<input type="checkbox" data-name="'+dataName+'" id="'+id+'"';
             if(isChecked) {
                 itemHtml += ' checked ';
             }
-            //itemHtml += 'disabled = "disabled"';
             itemHtml += '> ';
             itemHtml += '<label for="'+id+'" class="checklist-label">'+label+'</label>';
-            itemHtml += '<a href="javascript:" class="pull-right" data-value="'+valueSanitized+'" data-action="removeValue"><span class="fas fa-times"></span></a>';
-            itemHtml += '</div>';                
+            itemHtml += '<a href="javascript:" class="pull-right" data-value="'+dataValue+'" data-action="removeValue"><span class="fas fa-times"></span></a>';
+            itemHtml += '</div>';      
             return itemHtml;            
         },
 
         addValue: function (label) {
             var isNew = true;
-            // convert the label into a "not checked" dynamic checklist item
-            var value = label+';;0';            
-            // see if the item already exists in the 'this.selected' items array 
-            if (this.selected.indexOf(value) == -1) {
-                // if it doesn't exist, try with a "checked" dynamic checklist item
-                value = label+';;1';
-                if (this.selected.indexOf(value) !== -1) {
-                    isNew = false;                
-                }  else {
-                    value = label+';;0';                        
-                }          
+            // convert the label into a JSON object with the default state value of zero
+            var jsonItem = {};
+            jsonItem.label = label;
+            jsonItem.state = "0";
+            // see if the jsonItem already exists in the "selected" array of items
+            if (this.selected.indexOf(jsonItem) == -1) {
+                // if it doesn't exist, try with the other state value
+                jsonItem.state = "1";
+                if (this.selected.indexOf(jsonItem) !== -1) {
+                    isNew = false;
+                } else {
+                    // reset the state property to its default value
+                    jsonItem.state = "0";
+                }                
             } else {
-                isNew = false;
-            }            
+                isNew = false; 
+            }
             // it it doesn't exist append to the "selected" array and to the list html
             if(isNew) {
                 // create the rendering html code
-                var html = this.getItemHtml(value);
+                var html = this.getItemHtml(jsonItem);
                 // append the html to the existing list of items
                 this.$list.append(html);
                 // append the new dynamic checklist item to the "selected" array
-                this.selected.push(value);
+                this.selected.push(jsonItem);
                 // trigger the "change" event
                 this.trigger('change');                
             }
         },
 
         getValueForDisplay: function () {
-            var list = this.selected.map(function (rawItem) {
-                var itemArray = rawItem.split(";;");
-                // get the item (label) part of the combined label-boolean rawItem value and generate its html code
-                var item = itemArray[0];
-                var label = null;
-                if (this.translatedOptions != null) {
-                    if (item in this.translatedOptions) {
-                        label = this.translatedOptions[item];
+            var list = this.selected.map(function (jsonItem) {
+                // get the checklist item label
+                var label = this.escapeValue(jsonItem.label);
+                if (this.translatedOptions) {
+                    if ((label in this.translatedOptions)) {
+                        label = this.translatedOptions[label];
+                        label = label.toString();
                         label = this.escapeValue(label);
                     }
-                }
-                if (label === null) {
-                    label = this.escapeValue(item);
-                }
+                }     
                 if (label === '') {
                     label = this.translate('None');
                 }
-                var style = this.styleMap[item] || 'default';
+                var style = this.styleMap[jsonItem.label] || 'default';
                 if (this.params.displayAsLabel) {
                     label = '<span class="label label-md label-'+style+'">' + label + '</span>';
                 } else {
@@ -156,15 +152,14 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
                         label = '<span class="text-'+style+'">' + label + '</span>';
                     }
                 }      
-                //var displayHtml = label;
                 var displayHtml = '';
                 // get the option checkbox boolean value and generate its html code
                 var dataName = 'checklistItem-'+this.name+'-'+label;
-                var id = 'checklist-item-'+this.name+'-'+label;                
+                var id = 'checklist-item-'+this.name+'-'+label;                        
                 var isChecked = false;
-                if( itemArray[1] == "1"){
+                if( jsonItem.state == "1"){
                     isChecked = true;
-                }
+                }            
                 if(this.isInversed){
                     isChecked = !isChecked;
                 }
@@ -178,7 +173,6 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
                 displayHtml += ' '+label;               
                 return displayHtml;
             }, this);
-
             if (this.displayAsList) {
                 if (!list.length) return '';
                 var itemClassName = 'multi-enum-item-container';
@@ -197,17 +191,15 @@ define('dynamic-checklist:views/fields/dynamic-checklist', ['views/fields/array'
         fetchFromDom: function () {
             var selected = [];
             this.$el.find('.list-group .list-group-item').each(function (i, el) {
-                var updatedValue = '';
+                var updatedValue = {};
                 // fetch the original data-value
-                var existingValue = $(el).data('value').toString();
-                // determine the position of the label-boolean divider in the data-value
-                var n = existingValue.indexOf(";;");
-                // fetch the label value
-                var label = existingValue.substring(0, n);
+                var existingValue = $(el).data('value');
+                var label = existingValue.label;
                 // fetch the current boolean value (0 or 1)
-                var state = $(el).find('input:checkbox:first:checked').length.toString(); 
-                // build the new data-value attribute
-                updatedValue = label+';;'+state;
+                var currentState = $(el).find('input:checkbox:first:checked').length.toString(); 
+                // build the current item object
+                updatedValue.label = label;
+                updatedValue.state = currentState;
                 // update the element's data-value attribute
                 $(el).attr('data-value', updatedValue);
                 // append the 'selected' array
